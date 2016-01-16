@@ -4,8 +4,16 @@
 static NSMutableDictionary *_settings;
 
 @implementation NMAApplicationController
--(void)updateDataSource:(NSString*)searchText
+- (void)updateDataSource:(NSString *)searchText
 {
+	for (int section = 0, sectionCount = _tableView.numberOfSections; section < sectionCount; ++section) {
+		for (int row = 0, rowCount = [_tableView numberOfRowsInSection:section]; row < rowCount; ++row) {
+			UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:section]];
+			cell.accessoryType = UITableViewCellAccessoryNone;
+			cell.accessoryView = nil;
+		}
+	}
+
 	NSNumber *iconSize = [NSNumber numberWithUnsignedInteger:ALApplicationIconSizeSmall];
 
 	NSString *enabledList = @"";
@@ -34,17 +42,27 @@ static NSMutableDictionary *_settings;
 
 	enabledList = [enabledList stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@","]];
 
-	NSString* filter = (searchText && searchText.length > 0) ? [NSString stringWithFormat:@"displayName beginsWith[cd] '%@'", searchText] : nil;
+	NSString *filter = (searchText && searchText.length > 0) ? [NSString stringWithFormat:@"displayName beginsWith[cd] '%@'", searchText] : nil;
 
 	if (filter) {
 		_dataSource.sectionDescriptors = [NSArray arrayWithObjects:
-											 [NSDictionary dictionaryWithObjectsAndKeys:
-												 @"Search Results", ALSectionDescriptorTitleKey,
-												 @"ALCheckCell", ALSectionDescriptorCellClassNameKey,
-												 iconSize, ALSectionDescriptorIconSizeKey,
-												 @YES, ALSectionDescriptorSuppressHiddenAppsKey,
-												 filter, ALSectionDescriptorPredicateKey
-											 , nil]
+											[NSDictionary dictionaryWithObjectsAndKeys:
+												@"Enabled Applications", ALSectionDescriptorTitleKey,
+												@"ALCheckCell", ALSectionDescriptorCellClassNameKey,
+												iconSize, ALSectionDescriptorIconSizeKey,
+												@YES, ALSectionDescriptorSuppressHiddenAppsKey,
+												[NSString stringWithFormat:@"%@ AND bundleIdentifier in {%@}", filter, enabledList],
+												ALSectionDescriptorPredicateKey
+											, nil],
+
+											[NSDictionary dictionaryWithObjectsAndKeys:
+												@"Available Applications", ALSectionDescriptorTitleKey,
+												@"ALCheckCell", ALSectionDescriptorCellClassNameKey,
+												iconSize, ALSectionDescriptorIconSizeKey,
+												@YES, ALSectionDescriptorSuppressHiddenAppsKey,
+												[NSString stringWithFormat:@"%@ AND not bundleIdentifier in {%@}", filter, enabledList],
+												ALSectionDescriptorPredicateKey
+											, nil]
 										 , nil];
 	} else {
 		_dataSource.sectionDescriptors = [NSArray arrayWithObjects:
@@ -71,13 +89,13 @@ static NSMutableDictionary *_settings;
 	[_tableView reloadData];
 }
 
--(id)initWithRow:(int)row
+- (id)initWithRow:(int)row
 {
 	_row = row;
 	return [self init];
 }
 
--(id)init
+- (id)init
 {
 	if (!(self = [super init])) return nil;
 	CGRect bounds = [[UIScreen mainScreen] bounds];
@@ -90,10 +108,6 @@ static NSMutableDictionary *_settings;
 	_dataSource.tableView = _tableView;
 	[self updateDataSource:nil];
 
-	_searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
-	_searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-	_searchBar.delegate = self;
-
 	_settings = [NSMutableDictionary dictionaryWithContentsOfFile:_plistfile] ?: [NSMutableDictionary dictionary];
 
 	isSearching = NO;
@@ -101,23 +115,26 @@ static NSMutableDictionary *_settings;
 	return self;
 }
 
--(void)viewDidLoad
+- (void)viewDidLoad
 {
 	((UIViewController *)self).title = @"Applications";
 
-	UIEdgeInsets insets = UIEdgeInsetsMake(44.0f, 0, 0, 0);
-	_tableView.contentInset = insets;
-	_tableView.contentOffset = CGPointMake(0, 12.0f);
-	insets.top = 0;
-	_tableView.scrollIndicatorInsets = insets;
-	_searchBar.frame = CGRectMake(0, -44.0f, _tableView.bounds.size.width, 44.0f);
+	self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+	self.searchController.searchResultsUpdater = self;
+	self.searchController.delegate = self;
+	self.searchController.searchBar.delegate = self;
+	self.definesPresentationContext = YES;
+	self.searchController.dimsBackgroundDuringPresentation = NO;
+	// self.searchController.searchBar.scopeButtonTitles = @[NSLocalizedString(@"ScopeButtonCountry",@"Button1"), NSLocalizedString(@"ScopeButtonCapital",@"Button2")];
+	_tableView.tableHeaderView = self.searchController.searchBar;
 
-	[_tableView addSubview:_searchBar];
+	[self.searchController.searchBar sizeToFit];
+
 	[self.view addSubview:_tableView];
 	[super viewDidLoad];
 }
 
--(void) viewWillAppear:(BOOL) animated
+- (void)viewWillAppear:(BOOL)animated
 {
 	[super viewWillAppear:animated];
 }
@@ -125,51 +142,32 @@ static NSMutableDictionary *_settings;
 - (void)viewWillDisappear:(BOOL)animated
 {
 	[super viewWillDisappear:animated];
-	[_searchBar resignFirstResponder];
 }
 
--(void)dealloc
+- (void)dealloc
 {
-	_searchBar.delegate = nil;
 	_tableView.delegate = nil;
 }
 
--(void)searchBarTextDidBeginEditing:(UISearchBar *)searchBar
+- (void)updateSearchResultsForSearchController:(UISearchController *)searchController
 {
-	for (int section = 0, sectionCount = _tableView.numberOfSections; section < sectionCount; ++section) {
-		for (int row = 0, rowCount = [_tableView numberOfRowsInSection:section]; row < rowCount; ++row) {
-			UITableViewCell *cell = [_tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:row inSection:section]];
-			cell.accessoryType = UITableViewCellAccessoryNone;
-			cell.accessoryView = nil;
-		}
-	}
+	NSString *searchText = searchController.searchBar.text;
+	[self updateDataSource:searchText];
+}
 
+- (void)searchBar:(UISearchBar *)searchBar selectedScopeButtonIndexDidChange:(NSInteger)selectedScope
+{
+	[self updateSearchResultsForSearchController:self.searchController];
+}
+
+- (void)willPresentSearchController:(UISearchController *)searchController
+{
 	isSearching = YES;
-	[_searchBar setShowsCancelButton:true animated:true];
 }
 
--(void)searchBarTextDidEndEditing:(UISearchBar *)searchBar
-{
-	[_searchBar setShowsCancelButton:false animated:true];
-}
-
--(void)searchBarSearchButtonClicked:(UISearchBar *)searchBar
-{
-	[_searchBar resignFirstResponder];
-}
-
--(void)searchBarCancelButtonClicked:(UISearchBar *)searchBar
+- (void)willDismissSearchController:(UISearchController *)searchController
 {
 	isSearching = NO;
-	_searchBar.text = nil;
-	[self updateDataSource:nil];
-	[_searchBar resignFirstResponder];
-	_tableView.contentOffset = CGPointMake(0, -44.0f);
-}
-
--(void)searchBar:(UISearchBar*)searchBar textDidChange:(NSString*)searchText
-{
-	[self updateDataSource:searchText];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
@@ -177,14 +175,14 @@ static NSMutableDictionary *_settings;
 	ALCheckCell *cell = (ALCheckCell *)[_tableView cellForRowAtIndexPath:indexPath];
 	UITableViewCellAccessoryType cellAccessoryType = [cell accessoryType];
 
-	BOOL remove = !isSearching && ((indexPath.section == 0 && cellAccessoryType == UITableViewCellAccessoryNone) || (indexPath.section != 0 && cellAccessoryType == UITableViewCellAccessoryCheckmark));
+	BOOL remove = (indexPath.section == 0 && cellAccessoryType == UITableViewCellAccessoryNone) || (indexPath.section != 0 && cellAccessoryType == UITableViewCellAccessoryCheckmark);
 
 	if ((remove && indexPath.section != 0) || (!remove && indexPath.section == 0)) {
 		cell.accessoryView = nil;
 	} else {
 		NSString *text;
 		UIColor *fontColor;
-		if (isSearching || indexPath.section != 0) {
+		if (indexPath.section != 0) {
 			text = @"+";
 			fontColor = [UIColor colorWithRed:0.0 green:0.5 blue:0.0 alpha:1.0];
 		} else {
@@ -192,7 +190,7 @@ static NSMutableDictionary *_settings;
 			fontColor = [UIColor colorWithRed:0.5 green:0.0 blue:0.0 alpha:1.0];
 		}
 		UIFont *font = [UIFont systemFontOfSize:24.0];
-		CGSize size = [text sizeWithAttributes:@ {NSFontAttributeName: font}];
+		CGSize size = [text sizeWithAttributes:@{NSFontAttributeName : font}];
 
 		NSDictionary *attrsDictionary = [NSDictionary dictionaryWithObjectsAndKeys:font, NSFontAttributeName, [NSNumber numberWithFloat:1.0], NSBaselineOffsetAttributeName, fontColor, NSForegroundColorAttributeName, nil];
 
@@ -202,15 +200,6 @@ static NSMutableDictionary *_settings;
 		UIGraphicsEndImageContext();
 
 		cell.accessoryView = [[UIImageView alloc] initWithImage:textImage];
-	}
-
-	BOOL updateDataSource = NO;
-	if (isSearching) {
-		_searchBar.text = nil;
-		[_searchBar resignFirstResponder];
-		_tableView.contentOffset = CGPointMake(0, -44.0f);
-		isSearching = NO;
-		updateDataSource = YES;
 	}
 
 	if (_row < 0) {
@@ -235,7 +224,6 @@ static NSMutableDictionary *_settings;
 				[filters addObject:displayIdentifier];
 			}
 
-
 			if (_row == -2) {
 				[_settings setObject:filters forKey:@"lsApps"];
 			} else {
@@ -246,15 +234,23 @@ static NSMutableDictionary *_settings;
 
 			NSString *post = @"net.tateu.nomoreactions/preferences";
 			if (post) {
-				CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),  (__bridge CFStringRef)post, NULL, NULL, TRUE);
+				CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), (__bridge CFStringRef)post, NULL, NULL, TRUE);
 			}
 		}
 	}
 
+	// if (isSearching) {
+	// 	[self.searchController setActive:NO];
+	// 	isSearching = NO;
+	// }
+
 	[tableView deselectRowAtIndexPath:indexPath animated:true];
-	if (updateDataSource) {
-		[cell setAccessoryType:UITableViewCellAccessoryNone];
-		[self updateDataSource:nil];
-	}
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+	if (section == 0) return 34;
+
+	return 24;
 }
 @end
