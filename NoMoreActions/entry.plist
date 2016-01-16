@@ -1,0 +1,10 @@
+{
+    entry = {
+	bundle = NoMoreActions;
+	cell = PSLinkCell;
+	detail = NoMoreActionsListController;
+	icon = NoMoreActions.png;
+	isController = 1;
+	label = "No More Actions";
+    };
+}

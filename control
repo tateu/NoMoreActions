@@ -1,0 +1,9 @@
+Package: net.tateu.nomoreactions
+Name: No More Actions
+Depends: firmware (>=8.0), mobilesubstrate, preferenceloader, applist
+Version: 1.0.0~beta2
+Architecture: iphoneos-arm
+Description: Remove the Swipe Left actions from notifications on the LockScreen and/or Notification Center for specific, user selected Applications.
+Maintainer: tateu (Josh Harris) <tateu@tateu.net>
+Author: tateu (Josh Harris) <tateu@tateu.net>
+Section: Tweaks
